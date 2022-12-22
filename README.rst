@@ -1,6 +1,6 @@
-=======================
-NIOS Control Zone Locks
-=======================
+======================
+NIOS Manage Zone Locks
+======================
 
 | Version: 0.1.0
 | Author: Chris Marrison
