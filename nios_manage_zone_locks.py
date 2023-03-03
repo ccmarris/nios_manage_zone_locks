@@ -4,18 +4,18 @@
 
  Description:
 
-    Retrieve leases for a network based on a seed IP address
+    Manage NIOS Zone locks
 
  Requirements:
    Python 3.6+
 
  Author: Chris Marrison
 
- Date Last Updated: 20221222
+ Date Last Updated: 20230303
 
  Todo:
 
- Copyright (c) 2022 Chris Marrison / Infoblox
+ Copyright (c) 2022 - 2023 Chris Marrison / Infoblox
 
  Redistribution and use in source and binary forms,
  with or without modification, are permitted provided
@@ -42,7 +42,7 @@
  POSSIBILITY OF SUCH DAMAGE.
 
 '''
-__version__ = '0.1.0'
+__version__ = '0.2.1'
 __author__ = 'Chris Marrison'
 __author_email__ = 'chris@infoblox.com'
 __license__ = 'BSD'
@@ -70,6 +70,8 @@ def parseargs():
                         help="Override ini file")
     parse.add_argument('-z', '--zone', type=str, default='',
                         help='Operate on specific zone')
+    parse.add_argument('-v', '--view', type=str, default='',
+                        help='Operate on specific view')
     parse.add_argument('-l', '--lock', action='store_true', 
                         help="Lock zone(s)")
     parse.add_argument('-u', '--unlock', action='store_true', 
@@ -259,7 +261,7 @@ class ZONELOCKS:
         return data
 
 
-    def get_zones(self, **params):
+    def get_zones(self, next_page='', **params):
         '''
         Get list of zones with lock status
 
@@ -269,10 +271,14 @@ class ZONELOCKS:
             List of zones with lock status
         '''
         zones = []
+        page_err = False
         return_fields = '_return_fields=fqdn,locked,locked_by'
+        paging = '_paging=1&_max_results=999&_return_as_object=1'
 
         # Get Zones
-        url = f'{self.base_url}/zone_auth?{return_fields}'
+        url = f'{self.base_url}/zone_auth?{return_fields}&{paging}'
+
+
         if params:
             url = self._add_params(url, first_param=False, **params)
 
@@ -282,7 +288,28 @@ class ZONELOCKS:
         if response:
             logging.info('Zone data retrieved successfully')
             logging.debug(f'Response: {response}')
-            zones = response
+            zones += response.get('result')
+            next_page = response.get('next_page_id')
+            # Page through data
+            while next_page:
+                logging.debug('Getting next page')
+                url = self._add_params(url, first_param=False, _page_id=next_page )
+                response = self.wapi_get(url=url)
+                if response:
+                    logging.info('Next page retrieved successfully')
+                    logging.debug(f'Response: {response}')
+                    zones += response.get('result')
+                    next_page = response.get('next_page_id')
+                else:
+                    logging.error('Failed to retrieve page')
+                    logging.debug(f'Response: {response}')
+                    next_page = None
+                    page_err = True
+            if not page_err:
+                logging.debug('Complete: no more data pages.')
+            else:
+                logging.info('Error Occured: Returning retrieved zones')
+
         else:
             logging.error('Failed to retrieve zone data')
             zones = []
@@ -358,7 +385,7 @@ class ZONELOCKS:
         return status
 
 
-def report_lock_status(cfg: str ='', zone:str =''):
+def report_lock_status(cfg: str ='', zone:str ='', view:str =''):
     '''
     Get zone and report log status
 
@@ -373,6 +400,8 @@ def report_lock_status(cfg: str ='', zone:str =''):
 
     if zone:
         zone_data = gm.get_zones(fqdn=zone)
+    elif view:
+        zone_data = gm.get_zones(view=view)
     else:
         zone_data = gm.get_zones()
     
@@ -385,6 +414,7 @@ def report_lock_status(cfg: str ='', zone:str =''):
     else:
         logging.info('No matching zones found.')
     
+    logging.info(f'Reported {len(zone_data)} zones')
     return zone_data
 
 
@@ -425,7 +455,8 @@ def control_zone_lock(cfg: str = '',
     return status
 
 
-def process_all_zones(cfg: str = '', 
+def process_all_zones(cfg: str = '',
+                      view: str = '',
                       lock: bool = False, 
                       unlock: bool = False):
     '''
@@ -444,7 +475,11 @@ def process_all_zones(cfg: str = '',
         # Unlock overrides
         lock = False
 
-    zone_data = gm.get_zones()
+    if view:
+        zone_data = gm.get_zones(view=view)
+    else:
+        zone_data = gm.get_zones()
+
     for z in zone_data:
         if lock and not z.get('locked'):
             ref = z.get('_ref')
@@ -454,7 +489,7 @@ def process_all_zones(cfg: str = '',
             s = gm.unlock_zone(zone_ref=ref)
         report_lock_status(cfg=cfg, zone=z.get('fqdn'))
     
-    return
+    return len(zone_data)
 
 
 def main():
@@ -471,7 +506,7 @@ def main():
     t1 = time.perf_counter()
     
     if not (args.lock or args.unlock):
-        report_lock_status(cfg=args.config, zone=args.zone)
+        report_lock_status(cfg=args.config, zone=args.zone, view=args.view)
     else:
         if args.zone:
             s = control_zone_lock(cfg=args.config,
@@ -480,8 +515,10 @@ def main():
                                   unlock=args.unlock)
         else:
             s = process_all_zones(cfg=args.config,
+                                  view=args.view,
                                   lock=args.lock,
                                   unlock=args.unlock)
+            logging.info(f'Processed: {s} zones')
 
     run_time = time.perf_counter() - t1
     

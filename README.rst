@@ -2,7 +2,7 @@
 NIOS Manage Zone Locks
 ======================
 
-| Version: 0.1.0
+| Version: 0.2.1
 | Author: Chris Marrison
 | Email: chris@infoblox.com
 
@@ -127,6 +127,7 @@ available::
     -c CONFIG, --config CONFIG
                           Override ini file
     -z ZONE, --zone ZONE  Operate on specific zone
+    -v VIEW, --view VIEW  Operate on specific view
     -l, --lock            Lock zone(s)
     -u, --unlock          Unlock zone(s)
     -d, --debug           Enable debug messages
@@ -160,9 +161,9 @@ Unlock a specified zone::
 
   % ./nios_manage_zone_locks.py --config gm.ini --zone demozone.co.uk --unlock
 
-Unlock all zones::
+Unlock all zones in default view::
 
-  % ./nios_manage_zone_locks.py --config gm.ini --unlock
+  % ./nios_manage_zone_locks.py --config gm.ini --unlock --view default
 
 
 License
@@ -175,4 +176,5 @@ This project is licensed under the 2-Clause BSD License
 Aknowledgements
 ---------------
 
-Thanks to Ricky Ortiz for the requirement and initial testing.
+Thanks to Ricky Ortiz for the requirement and initial testing and Steve Barber
+for large dataset testing.
